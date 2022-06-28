@@ -97,3 +97,33 @@ let rec Derivative x : Expression =
        | _ -> failwith(sprintf "Unable to match expression [%A]" x)
    Simplify y
 
+let OpName (e: Expression) : string =
+    match e with
+    | Add(e1, e2) -> "+"
+    | Sub(e1, e2) -> "-"
+    | Mul(e1, e2) -> "*"
+    | Div(e1, e2) -> "/"
+    | Pow(e1, e2) -> "^"
+    | _ -> failwith(sprintf "Unrecognized operator [%A]" e)
+
+let FuncName (e: Expression) (a : string) : string =
+    match e with
+    | Exp(x) -> sprintf "e^(%s)" a
+    | Log(x) -> sprintf "log(%s)" a
+    | Sin(x) -> sprintf "sin(%s)" a
+    | Cos(x) -> sprintf "cos(%s)" a
+    | _ -> failwith(sprintf "Unrecognized function [%A]" e)
+
+let FormatExpression x =
+    let rec FormatSubExpression (outer : Expression option, inner : Expression) : string =
+        match inner with
+        | X -> "x"
+        | Const(n) -> sprintf "%f" n
+        | Neg x -> sprintf "-%s" (FormatSubExpression(Some(inner), x))
+        | Op(op, e1, e2) ->
+            let s = FormatSubExpression(Some(inner), e1) + " " + OpName(inner) + " " + FormatSubExpression(Some(inner), e2)
+            match outer with
+            | None -> s
+            | _ -> "(" + s + ")"
+        | Func(f, e) -> FuncName(inner) (FormatSubExpression(None, e))
+    FormatSubExpression(None, x)
