@@ -1,4 +1,7 @@
-﻿type Expression =
+﻿open System
+
+
+type Expression =
     | X
     | Const of float
     | Neg of Expression
@@ -127,3 +130,62 @@ let FormatExpression x =
             | _ -> "(" + s + ")"
         | Func(f, e) -> FuncName(inner) (FormatSubExpression(None, e))
     FormatSubExpression(None, x)
+
+let IsOperator (x : string) =
+    match x with
+    | "+" | "-" | "*" | "/" | "^" -> true
+    | _ -> false
+
+let rec LevelTokens (lst : string list) (level : int) : (string * int) list =
+    match lst with
+    | [] -> []
+    | "(" :: tail -> LevelTokens tail (level+1)
+    | ")" :: tail -> LevelTokens tail (level-1)
+    | x :: tail when IsOperator(x) -> (x, level) :: LevelTokens tail level
+    | head :: tail -> (head, level) :: LevelTokens tail level
+
+let GroupTokens (item : (string * int)) (acc : (string list * int) list) : (string list * int) list =
+    match acc, item with
+    | [], (s, l) -> [([s], l)]
+    | (s1, l1) :: tail, (s, l) when l = l1 -> (s :: s1, l) :: tail
+    | head :: tail, (s, l) -> ([s], l) :: head :: tail
+
+let IsFunction (x : string) =
+    match x with
+    | "e" | "log" | "sin" | "cos" -> true
+    | _ -> false
+
+let (|ToVar|_|) s =
+    if s = "x" then
+        Some(X)
+    else
+        None
+
+let ApplyOperator (op : string, e1 : Expression, e2 : Expression) : Expression =
+    match op with
+    | "+" -> Add(e1, e2)
+    | "-" -> Sub(e1, e2)
+    | "*" -> Mul(e1, e2)
+    | "/" -> Div(e1, e2)
+    | "^" -> Pow(e1, e2)
+    | _ -> failwith(sprintf "Unrecognized operator [%s]" op)
+
+let ApplyFunction (func : string, e : Expression) : Expression =
+    match func with
+    | "e" -> Exp(e)
+    | "log" -> Log(e)
+    | "sin" -> Sin(e)
+    | "cos" -> Cos(e)
+    | _ -> failwith(sprintf "Unrecognized function [%s]" func)
+
+let (|ToConst|_|) s =
+    let success, result = Double.TryParse(s.ToString())
+    if success then
+        Some(Const(result))
+    else
+        None
+
+let ParseItem (s : string) : Expression =
+    match s with
+    | ToVar e -> e
+    | ToConst e -> e
