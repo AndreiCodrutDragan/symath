@@ -189,3 +189,66 @@ let ParseItem (s : string) : Expression =
     match s with
     | ToVar e -> e
     | ToConst e -> e
+
+let Tokenize (value : System.String) =
+    let value = value.Replace(" ", "")
+    let value = value.Replace("e^(", "e(")
+    let value = value.Replace("(", " ( ")
+    let value = value.Replace(")", " ) ")
+    let value = value.Replace("+", " + ")
+    let value = value.Replace("-", " - ")
+    let value = value.Replace("*", " * ")
+    let value = value.Replace("/", " / ")
+    let value = value.Replace("^", " ^ ")
+    value.Trim().Split([|' '|]) |> Seq.toList |> List.filter (fun e -> e.Length > 0)
+
+let rec ParseExpression (s : string) : Expression =
+
+    let rec LevelTokens (lst : string list) (level : int) : (string * int) list =
+        match lst with
+        | [] -> []
+        | "(" :: tail -> LevelTokens tail (level+1)
+        | ")" :: tail -> LevelTokens tail (level-1)
+        | x :: tail when IsOperator(x) -> (x, level) :: LevelTokens tail level
+        | head :: tail -> (head, level) :: LevelTokens tail level
+
+    let GroupTokens (item : (string * int)) (acc : (string list * int) list) : (string list * int) list =
+        match acc, item with
+        | [], (s, l) -> [([s], l)]
+        | (s1, l1) :: tail, (s, l) when l = l1 -> (s :: s1, l) :: tail
+        | head :: tail, (s, l) -> ([s], l) :: head :: tail
+
+    let rec MergeExpressions (e : Expression, items : string list) : Expression =
+        match items with
+        | [] -> e
+        | op :: x :: tail when IsOperator(op) -> MergeExpressions(ApplyOperator(op, e, ParseItem(x)), tail)
+        | x :: op :: tail when IsOperator(op) -> MergeExpressions(ApplyOperator(op, ParseItem(x), e), tail)
+        | _ -> failwith(sprintf "Unable to build expression from [%A]" items)
+
+    let ParseFlatExpression (tokens : string list) : Expression =
+        match tokens with
+        | [] -> failwith("Expression string is empty")
+        | "-" :: x :: tail -> MergeExpressions(Neg(ParseItem(x)), tail)
+        | x :: tail -> MergeExpressions(ParseItem(x), tail)
+
+    let rec MergeTokensWithExpressions (e : Expression, items : (string list) list) : Expression =
+        match items with
+        | [] -> e
+        | [[func]] when IsFunction(func) -> ApplyFunction(func, e)
+        | [op; x] :: tail when IsOperator(op) -> MergeTokensWithExpressions(ApplyOperator(op, e, ParseItem(x)), tail)
+        | [x; op] :: tail when IsOperator(op) -> MergeTokensWithExpressions(ApplyOperator(op, ParseItem(x), e), tail)
+        | (op::x::rest) :: tail when IsOperator(op) -> MergeTokensWithExpressions(ApplyOperator(op, e, ParseFlatExpression(x::rest)), tail)
+        | (x::op::y::rest) :: tail when IsOperator(op) -> ApplyOperator(op, ParseItem(x), MergeTokensWithExpressions(e, (y::rest)::tail))
+        | _ -> failwith(sprintf "Unable to build expression from [%A]" items)
+
+    let rec ParseTokenGroups (lst : (string list) list) : Expression =
+        match lst with
+        | [ls] -> ParseFlatExpression(ls)
+        | ls :: [op] :: tail when IsOperator(op) -> ApplyOperator(op, ParseFlatExpression(ls), ParseTokenGroups(tail))
+        | ls :: [op :: optail] when IsOperator(op) -> MergeTokensWithExpressions(ParseFlatExpression(ls), [op :: optail])
+        | ls :: (op :: optail) :: tail when IsOperator(op) -> ApplyOperator(op, ParseFlatExpression(ls), MergeTokensWithExpressions(ParseTokenGroups(tail), [optail]))
+        | ls :: tail -> MergeTokensWithExpressions(ParseTokenGroups(tail), [ls])
+
+    let leveledTokens = (Tokenize s |> LevelTokens) 0
+    let tokenGroups = List.foldBack GroupTokens leveledTokens [] |> List.map(fun (x, y) -> x)
+    ParseTokenGroups(tokenGroups)
